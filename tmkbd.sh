@@ -4,7 +4,7 @@ tmuxDir="$HOME/.termux"
 tmuxProperties="$tmuxDir/termux.properties"
 tmuxPropertiesBackup="$tmuxDir/termux.properties.old"
 
-tmkbdDir=$([ $TMKBD_INSTALL ] && echo $TMKBD_INSTALL || echo "$HOME/.local/share/tmkbd")
+[ "$TMKBD_INSTALL" ] && tmkbdDir="$TMKBD_INSTALL" || tmkbdDir="$HOME/.local/share/tmkbd"
 tmkbdBase="$tmkbdDir/base.properties"
 tmkbds="$tmkbdDir/keyboards"
 tmkbdProfiles="$tmkbdDir/profiles"
@@ -68,35 +68,46 @@ portrait='[[
 biglog=0
 
 user() {
-  [ $biglog -ne 0 ] && echo -n "?? $@" || echo -n $@
+  [ $biglog -ne 0 ] && printf %s "?? $*" || printf %s "$*"
 }
 
 info() {
-  [ $biglog -ne 0 ] && echo ':: '$@ || echo $@
+  [ $biglog -ne 0 ] && echo ":: $*" || echo "$*"
 }
 
 error() {
-  [ $biglog -ne 0 ] && echo '!! '$@ || echo $@
+  [ $biglog -ne 0 ] && echo "!! $*" || echo "$*"
 }
 
 more() {
-  [ $biglog -ne 0 ] && echo '   '$@ || echo $@
+  [ $biglog -ne 0 ] && echo "   $*" || echo "$*"
+}
+
+isYes() {
+  [ "$1" = y ] || [ "$1" = Y ]
+}
+
+isNo() {
+  [ "$1" = n ] || [ "$1" = N ]
 }
 
 listProfiles() {
-  for profile in $(ls "$tmkbdProfiles"); do
+  for profile in "$tmkbdProfiles"/*; do
     basename "$profile" .properties
   done
   echo base
 }
 
 currentProfile() {
-  basename $(realpath $tmuxProperties) .properties
+  basename "$(realpath "$tmuxProperties")" .properties
 }
 
 getJSONParser() {
   for parser in jq node; do
-    [ -e "$(command -v $parser)" ] && echo -n $parser && return 0
+    if [ -e "$(command -v $parser)" ]; then
+      printf %s $parser
+      return 0
+    fi
   done
 }
 
@@ -104,11 +115,11 @@ generateProfile() {
   keyboardPath="$tmkbds/$1.json"
   profilePath="$tmkbdProfiles/$1.properties"
   cp "$tmkbdBase" "$profilePath"
-  echo -n '\n' >> "$profilePath"
+  echo >> "$profilePath"
   case $(getJSONParser) in
     jq)
-      echo -n 'extra-keys=' >> "$profilePath"
-      cat "$keyboardPath" | jq -c 'walk(
+      printf %s 'extra-keys=' >> "$profilePath"
+      jq -c 'walk(
         if . == "\"" then
           "QUOTE"
         elif . == "'\''" then
@@ -124,11 +135,11 @@ generateProfile() {
         else
           .
         end
-      )' >> "$profilePath"
+      )' < "$keyboardPath" >> "$profilePath"
       ;;
     node)
-      echo -n 'extra-keys=' >> "$profilePath"
-      cat "$keyboardPath" | node -e '
+      printf %s 'extra-keys=' >> "$profilePath"
+      node -e '
         // Courtesy of https://stackoverflow.com/a/54565854/11967372
         async function read(stream) {
           const chunks = [];
@@ -152,7 +163,7 @@ generateProfile() {
         }
 
         main();
-      ' >> "$profilePath"
+      ' < "$keyboardPath" >> "$profilePath"
       ;;
     *)
       error 'Unreachable: something went wrong with parser detection'
@@ -173,10 +184,10 @@ requireJSONParser() {
 
 addBase() {
   validProps=$(
-    echo -n '^((use-black-ui)|(use-fullscreen-workaround)|(fulscreen)|'
-    echo -n '(use-fullscreen-workaround)|(shortcut\.)|(bell-character)|'
-    echo -n '(back-key)|(enforce-char-based-input)|(ctrl-space-workaround)|'
-    echo -n '(terminal-margin-(horizontal)|(vertical)))'
+    printf %s '^((use-black-ui)|(use-fullscreen-workaround)|(fulscreen)|'
+    printf %s '(use-fullscreen-workaround)|(shortcut\.)|(bell-character)|'
+    printf %s '(back-key)|(enforce-char-based-input)|(ctrl-space-workaround)|'
+    printf %s '(terminal-margin-(horizontal)|(vertical)))'
   )
 
   # assume all properties are stored in a single line
@@ -184,8 +195,8 @@ addBase() {
 }
 
 generateProfiles() {
-  for profile in $(ls $tmkbds); do
-    generateProfile $(basename "$profile" .json)
+  for profile in "$tmkbds"/*; do
+    generateProfile "$(basename "$profile" .json)"
   done
 }
 
@@ -196,12 +207,15 @@ forceLinkProfile() {
 }
 
 linkProfile() {
-  if [ -e "$tmuxProperties" -a ! -h "$tmuxProperties" ]; then
+  if [ -e "$tmuxProperties" ] && [ ! -h "$tmuxProperties" ]; then
     info 'It looks like termux.properties is not a symlink.'
     more 'Removing it could cause data loss.'
     user -n 'Do you want to proceed? [y/N] '
-    read res
-    ! [ "$res" = y -o "$res" = Y ] && info 'Aborted.' && exit 0
+    read -r res
+    if ! isYes "$res"; then
+      info 'Aborted.'
+      exit 0
+    fi
   fi
   forceLinkProfile "$1"
 }
@@ -211,9 +225,12 @@ install() {
     info "$tmkbdDir already exists."
     more 'Reinstalling will replace all of its contents.'
     user 'Do you sill want to continue? [y/N] '
-    read res
-    ! [ "$res" = 'y' -o "$res" = 'Y' ] && echo 'Aborted.' && exit 0
-    rm -rf $tmkbdDir
+    read -r res
+    if ! isYes "$res"; then
+      echo 'Aborted.'
+      exit 0
+    fi
+    rm -rf "$tmkbdDir"
     info "Removed $tmkbdDir".
   fi
 
@@ -231,9 +248,9 @@ install() {
     info "$tmuxDir (where Termux settings are normally stored) does not exist."
     more 'tmkbd requires it to properly function.'
     user 'Do you want to create it? [Y/n] '
-    read res
+    read -r res
 
-    if [ "$res" = 'n' -o "$res" = 'N' ]; then
+    if isNo "$res"; then
       info "Cleaning up - removing $tmkbdDir"
       rm -rf "$tmkbdDir"
       info "Aborted."
@@ -246,8 +263,8 @@ install() {
   fi
 
   user 'Do you want to install an included profile? [Y/n] '
-  read res
-  ! [ "$res" = 'n' -o "$res" = 'N' ] && echo "$portrait" > "$tmkbds/portrait.json"
+  read -r res
+  ! isNo "$res" && echo "$portrait" > "$tmkbds/portrait.json"
 
   generateProfiles
 
@@ -343,10 +360,10 @@ Options:
     info 'Rebuilding profiles...'
     generateProfiles
   else
-    profile=$([ $as ] && echo $as || basename $file .json)
+    [ "$as" ] && profile="$as" || profile=$(basename "$file" .json)
     cp "$file" "$tmkbds/$profile.json"
     info "Compiling $profile..."
-    generateProfile $profile
+    generateProfile "$profile"
     info "$profile now available."
     more 'Run '"'tmkbd use $profile'"' to apply it.'
   fi
@@ -374,7 +391,7 @@ Options:
       --help) echo "$help" && exit 0 ;;
       --version) echo "$version" && exit 0 ;;
     esac
-    [ $profile ] && exitUnexpectedArgument "$1"
+    [ "$profile" ] && exitUnexpectedArgument "$1"
     profile="$1"
     shift
   done
@@ -478,7 +495,7 @@ Options:
       --help) echo "$help" && exit 0 ;;
       --version) echo "$version" && exit 0 ;;
     esac
-    if [ $profile ]; then
+    if [ "$profile" ]; then
       error 'You can remove only one profile at a time.'
       more "$moreInfo"
       exit 1
@@ -489,7 +506,7 @@ Options:
 
   lastProfile="$(currentProfile)"
 
-  if ! [ -e "$tmkbds/$profile.json" -o -e "$tmkbdProfiles/$profile.properties" ]; then
+  if ! { [ -e "$tmkbds/$profile.json" ] || [ -e "$tmkbdProfiles/$profile.properties" ]; }; then
     info 'Nothing to do.'
     exit 0
   fi
@@ -516,20 +533,20 @@ exitUnexpectedArgument() {
 if [ ! -e "$tmkbdDir" ]; then
   biglog=1
   user "$tmkbdDir does not exist. Run setup? [y/N] "
-  read res
-  [ "$res" = 'y' -o "$res" = 'Y' ] && install
+  read -r res
+  isYes "$res" && install
   exit 0
 fi
 
 moreInfo='Run '\''tmkbd --help'\'' for more info.'
 
 case "$1" in
-  add) shift && addSubcommand $@ ;;
-  set) shift && setSubcommand $@ ;;
-  use) shift && useSubcommand $@ ;;
-  cycle) shift && cycleSubcommand $@ ;;
-  remove) shift && removeSubcommand $@ ;;
-  list) shift && listSubcommand $@ ;;
+  add) shift && addSubcommand "$@" ;;
+  set) shift && setSubcommand "$@" ;;
+  use) shift && useSubcommand "$@" ;;
+  cycle) shift && cycleSubcommand "$@" ;;
+  remove) shift && removeSubcommand "$@" ;;
+  list) shift && listSubcommand "$@" ;;
 esac
 
 while [ $# -gt 0 ]; do
