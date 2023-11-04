@@ -405,7 +405,7 @@ Options:
     exit 1
   fi
 
-  if [ ! -e "$tmkbdProfiles/$profile.properties" ]; then
+  if ! { [ "$profile" = base ] || [ -e "$tmkbdProfiles/$profile.properties" ]; }; then
     error "$profile does not exist."
     more 'Run '\''tmkbd list'\'' to see available profiles.'
     exit 1
