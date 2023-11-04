@@ -552,7 +552,6 @@ moreInfo='Run '\''tmkbd --help'\'' for more info.'
 
 case "$1" in
   add) shift && addSubcommand "$@" ;;
-  set) shift && setSubcommand "$@" ;;
   use) shift && useSubcommand "$@" ;;
   cycle) shift && cycleSubcommand "$@" ;;
   remove) shift && removeSubcommand "$@" ;;
