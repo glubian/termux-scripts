@@ -9,6 +9,8 @@ tmkbdBase="$tmkbdDir/base.properties"
 tmkbds="$tmkbdDir/keyboards"
 tmkbdProfiles="$tmkbdDir/profiles"
 
+requiredPackages='jq nodjs nodejs-lts'
+
 version='tmkbd, version 1.0.0'
 help='A utility for managing termux keyboard.
 
@@ -116,6 +118,8 @@ generateProfile() {
   profilePath="$tmkbdProfiles/$1.properties"
   cp "$tmkbdBase" "$profilePath"
   echo >> "$profilePath"
+
+  # NOTE: Be sure to update `requiredPackages` when adding a new tool.
   case $(getJSONParser) in
     jq)
       printf %s 'extra-keys=' >> "$profilePath"
@@ -171,15 +175,6 @@ generateProfile() {
       exit 1
       ;;
   esac
-}
-
-requireJSONParser() {
-  [ "$(getJSONParser)" ] && return 0
-  error 'No supported JSON parser implementation found.'
-  more 'You must have one of the following packages installed:'
-  more 'jq nodjs nodejs-lts'
-  more 'Run '\''tmkbd add --help'\'' for more info.'
-  return 1
 }
 
 addBase() {
@@ -351,6 +346,14 @@ Options:
 
   if [ ! "$file" ]; then
     error 'No file specified.'
+    more "$moreInfo"
+    exit 1
+  fi
+
+  if ! [ "$(getJSONParser)" ]; then
+    error 'No supported JSON parser implementation found.'
+    more 'You must have one of the following packages installed:'
+    more "$requiredPackages"
     more "$moreInfo"
     exit 1
   fi
@@ -531,6 +534,13 @@ exitUnexpectedArgument() {
 }
 
 if [ ! -e "$tmkbdDir" ]; then
+  if ! [ "$(getJSONParser)" ]; then
+    error "$tmkbdDir does not exist.";
+    more 'To set up and compile new profiles,'
+    more 'tmkbd needs one of the following packages:'
+    more "$requiredPackages"
+    exit 1
+  fi
   biglog=1
   user "$tmkbdDir does not exist. Run setup? [y/N] "
   read -r res
